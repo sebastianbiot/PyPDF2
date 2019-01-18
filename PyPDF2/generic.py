@@ -51,6 +51,14 @@ NumberSigns = b_('+-')
 IndirectPattern = re.compile(b_(r"(\d+)\s+(\d+)\s+R[^a-zA-Z]"))
 
 
+# Writing large data blocks is causing problems with
+# Python 3.6.4 (on macOS). Discarding those blocks is an 
+# acceptable option for now given what we use PyPDF2 for.
+# STREAM_OBJECT_DATA_MAX_LENGTH is the maximum data size
+# we let StreamObjects write to stream.
+STREAM_OBJECT_DATA_MAX_LENGTH = 2000001  # A conservative max
+
+
 def readObject(stream, pdf):
     tok = stream.read(1)
     stream.seek(-1, 1) # reset to start
@@ -779,9 +787,14 @@ class StreamObject(DictionaryObject):
         del self["/Length"]
         stream.write(b_("\nstream\n"))
         data = self._data
-        if encryption_key:
-            data = RC4_encrypt(encryption_key, data)
-        stream.write(data)
+
+        # Fri Jan 18 10:29:30 EST 2019
+        # Don't try to write data over 2MB.
+        # Process will hang if you do.
+        if len(data) < STREAM_OBJECT_DATA_MAX_LENGTH:
+            if encryption_key:
+                data = RC4_encrypt(encryption_key, data)
+            stream.write(data)
         stream.write(b_("\nendstream"))
 
     def initializeFromDictionary(data):
